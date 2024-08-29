@@ -2,3 +2,5 @@
 test
 test.c
 *.ppm
+stb_image.h
+*.out

@@ -9,14 +9,19 @@
 #define GLYPH_SIZE     5
 #define LETTER_SPACING 2
 
+typedef enum {
+  PLT_COLOR_RGB, PLT_COLOR_GRAY
+} plt_color_format;
+
 typedef struct plt_image {
-  int  width, height;
-  int *pixels;
+  int              width, height;
+  int             *pixels;
+  plt_color_format  color_format;
 } plt_image;
 
 typedef enum {
-  PT_ERRCODE_OK, PT_ERRCODE_IO_ERROR,
-} pt_errcode;
+  PLT_ERRCODE_OK, PLT_ERRCODE_IO_ERROR,
+} plt_errcode;
 
 /*
  * default pixel font glyphs, each having 5x5 size
@@ -83,15 +88,14 @@ static char plt_glyphs[128][GLYPH_SIZE*GLYPH_SIZE] = {
 extern "C" {
 #endif
 
-PTDEF plt_image  *plt_init(int width, int height);
-PTDEF void        plt_free(plt_image *im);
-PTDEF pt_errcode  plt_save_ppm(plt_image *im, const char *filename);
+PTDEF plt_image   *plt_init(int width, int height);
+PTDEF plt_image   *plt_from_stbi_uc_rgb(unsigned char *data, int width, int height);
+PTDEF void         plt_free(plt_image *im);
+PTDEF plt_errcode  plt_save_ppm(plt_image *im, const char *filename);
 
-/*
- * Drawing API
- */
+PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt);
+PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int thickness);
 PTDEF void plt_pixel_put(plt_image *im, int x, int y, int color, float alpha);
-PTDEF void plt_draw_line(plt_image *im, int x0, int y0, int x1, int y1, int color, int thickness);
 PTDEF void plt_text_draw(plt_image *im, const char *text, int x, int y, int color);
 PTDEF void plt_text_draw_scaled(plt_image *im, const char *text, int x, int y, int color, int scale);
 PTDEF int  plt_text_measure(const char *text, int scale);
@@ -115,15 +119,29 @@ PTDEF int  plt_text_measure(const char *text, int scale);
 #define plt__r_i32(px)     ((px >> 16) & 0xff)
 #define plt__g_i32(px)     ((px >> 8) & 0xff)
 #define plt__b_i32(px)     (px & 0xff)
-#define plt__r_f32(px)     (plt__r_i32(px) / 255f)
-#define plt__g_f32(px)     (plt__g_i32(px) / 255f)
-#define plt__b_f32(px)     (plt__b_i32(px) / 255f)
+#define plt__r_f32(px)     (plt__r_i32(px) / 255.0f)
+#define plt__g_f32(px)     (plt__g_i32(px) / 255.0f)
+#define plt__b_f32(px)     (plt__b_i32(px) / 255.0f)
 
 PTDEF plt_image *plt_init(int width, int height) {
   plt_image *plt = (plt_image*) PLT_MALLOC(sizeof(*plt));
   plt->pixels   = (int*) PLT_MALLOC(sizeof(int) * width * height);
   plt->width    = width; plt->height=height;
+  plt->color_format = PLT_COLOR_RGB;
   for (int i = 0; i < width*height; ++i) plt->pixels[i]=0;
+  return plt;
+}
+
+PTDEF plt_image  *plt_from_stbi_uc_rgb(unsigned char *data, int width, int height) {
+  size_t px_count = width * height * 3;
+  plt_image *plt = (plt_image*) PLT_MALLOC(sizeof(*plt));
+  plt->pixels   = (int*) PLT_MALLOC(sizeof(int) * px_count);
+  plt->width    = width; plt->height=height;
+  plt->color_format = PLT_COLOR_RGB;
+  // convert stb_image data into packed rgb
+  for (int i=0; i < px_count; ++i) 
+    plt->pixels[i] = plt__rgb(data[i*3], data[i*3+1], data[i*3+2]);
+  
   return plt;
 }
 
@@ -141,6 +159,7 @@ PTDEF void plt_pixel_put(plt_image *im, int x, int y, int color, float alpha) {
   int bg_r = plt__r_i32(px);
   int bg_g = plt__g_i32(px);
   int bg_b = plt__b_i32(px);
+
   im->pixels[y*im->width + x] = plt__rgb(
     (int)(bg_r * (1-alpha) + r*alpha),
     (int)(bg_g * (1-alpha) + g*alpha),
@@ -148,7 +167,22 @@ PTDEF void plt_pixel_put(plt_image *im, int x, int y, int color, float alpha) {
   );
 }
 
-PTDEF void plt_draw_line(plt_image *im, int x0, int y0, int x1, int y1, int color, int width) {
+PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt) {
+  if (im->color_format == target_fmt) return;
+
+  // NTSC formula: https://en.wikipedia.org/wiki/Grayscale
+  if (target_fmt == PLT_COLOR_GRAY)
+    for (int i = 0; i < im->width * im->height; ++i) {
+      float r = plt__r_f32(im->pixels[i]);
+      float g = plt__g_f32(im->pixels[i]);
+      float b = plt__b_f32(im->pixels[i]);
+      float gr = (0.299*r + 0.587*g + 0.114*b);
+      gr = fmin(1, fmax(gr, 0));
+      im->pixels[i] = plt__rgb((int)(gr*255), (int)(gr*255), (int)(gr*255));
+    } 
+}
+
+PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int width) {
   if (width < 1) width = 1;
   int steep = abs(y1-y0) > abs(x1-x0);
 
@@ -265,9 +299,9 @@ PTDEF int plt_text_measure(const char *text, int scale){
   return (GLYPH_SIZE*scale + LETTER_SPACING)*(strlen(text)) - LETTER_SPACING;
 }
 
-PTDEF pt_errcode plt_save_ppm(plt_image *im, const char *filename) {
+PTDEF plt_errcode plt_save_ppm(plt_image *im, const char *filename) {
   FILE* fp = fopen(filename, "wb");
-  if (!fp) return PT_ERRCODE_IO_ERROR;
+  if (!fp) return PLT_ERRCODE_IO_ERROR;
 
   // Write PPM header
   fprintf(fp, "P3\n%d %d\n255\n", im->width, im->height);
@@ -284,7 +318,7 @@ PTDEF pt_errcode plt_save_ppm(plt_image *im, const char *filename) {
   }
 
   fclose(fp);
-  return PT_ERRCODE_OK;
+  return PLT_ERRCODE_OK;
 }
 
 #endif // PLOT_IMPLEMENTATION
