@@ -15,8 +15,16 @@ int main(void) {
     "../assets/rabbit.jpg", &img_width, &img_height, &img_channels, 0);
 
   plt_image *img = plt_from_stbi_uc_rgb(img_stbi, img_width, img_height);
-  plt_color_convert(img, PLT_COLOR_GRAY);
 
+  // blur
+  float filter[] = {
+    1/25.f, 1/25.0f, 1/25.0f,
+    1/25.f, 1/25.0f, 1/25.0f,
+    1/25.f, 1/25.0f, 1/25.0f,
+  };
+  plt_filter_apply(img, 3, 3, filter);
+
+  plt_color_convert(img, PLT_COLOR_GRAY);
   plt_save_ppm(img, "rabbit.ppm");
 
   stbi_image_free(img_stbi);

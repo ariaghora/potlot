@@ -94,6 +94,7 @@ PTDEF void         plt_free(plt_image *im);
 PTDEF plt_errcode  plt_save_ppm(plt_image *im, const char *filename);
 
 PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt);
+PTDEF void plt_filter_apply(plt_image *im, int f_w, int f_h, float *f_data);
 PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int thickness);
 PTDEF void plt_pixel_put(plt_image *im, int x, int y, int color, float alpha);
 PTDEF void plt_text_draw(plt_image *im, const char *text, int x, int y, int color);
@@ -115,6 +116,7 @@ PTDEF int  plt_text_measure(const char *text, int scale);
 #define PLT_FREE(s)   free(s)
 
 #define plt__xorswap(a, b) do { a=a^b; b=a^b; a=a^b; } while(0);
+#define mt__clampf(v)      (fmin(1, fmax(v, 0)))
 #define plt__rgb(r,g,b)    (((r&0xff) << 16) | ((g&0xff) << 8) | (b & 0xff))
 #define plt__r_i32(px)     ((px >> 16) & 0xff)
 #define plt__g_i32(px)     ((px >> 8) & 0xff)
@@ -180,6 +182,34 @@ PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt) {
       gr = fmin(1, fmax(gr, 0));
       im->pixels[i] = plt__rgb((int)(gr*255), (int)(gr*255), (int)(gr*255));
     } 
+}
+
+PTDEF void plt_filter_apply(plt_image *im, int f_w, int f_h, float *f_data) {
+  for (int row=0; row<im->height; ++row) {
+    for (int col=0; col<im->width; ++col) {
+      float r_sum = 0, g_sum = 0, b_sum = 0;
+      for (int f_row = 0; f_row < f_h; ++f_row) {
+        int px_row = row + f_row - f_h/2;
+        if (px_row < 0 || px_row >= im->height) continue;
+        for (int f_col = 0; f_col < f_w; ++f_col) {
+          int px_col = col + f_col - f_w/2;
+          if (px_col < 0 || px_col >= im->width) continue;
+
+          float f_val = f_data[f_row*f_w + f_col];
+          int px = im->pixels[px_row*im->width + px_col];
+          r_sum = r_sum + plt__r_f32(px) * f_val;
+          g_sum = g_sum + plt__g_f32(px) * f_val;
+          b_sum = b_sum + plt__b_f32(px) * f_val;
+        }
+      }
+
+      im->pixels[row*im->width+col] = plt__rgb(
+        (int)(mt__clampf(r_sum)*255),
+        (int)(mt__clampf(g_sum)*255),
+        (int)(mt__clampf(b_sum)*255)
+      );
+    }
+  }
 }
 
 PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int width) {
