@@ -18,9 +18,9 @@ int main(void) {
 
   // blur
   float filter[] = {
-    1/25.f, 1/25.0f, 1/25.0f,
-    1/25.f, 1/25.0f, 1/25.0f,
-    1/25.f, 1/25.0f, 1/25.0f,
+    1/9.f, 1/9.0f, 1/9.0f,
+    1/9.f, 1/9.0f, 1/9.0f,
+    1/9.f, 1/9.0f, 1/9.0f,
   };
   plt_filter_apply(img, 3, 3, filter);
 
