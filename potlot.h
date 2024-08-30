@@ -94,8 +94,11 @@ PTDEF void         plt_free(plt_image *im);
 PTDEF plt_errcode  plt_save_ppm(plt_image *im, const char *filename);
 
 PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt);
+PTDEF void plt_filter_median(plt_image *im, int f_w, int f_h);
 PTDEF void plt_filter_apply(plt_image *im, int f_w, int f_h, float *f_data);
+PTDEF void plt_window_apply_fn(plt_image *im, int win_w, int win_h, int (*map_fn)(plt_image*, int*, int, int));
 PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int thickness);
+PTDEF void plt_pixel_map(plt_image *im, int (*map_fn)(plt_image*im, int row, int col, int px));
 PTDEF void plt_pixel_put(plt_image *im, int x, int y, int color, float alpha);
 PTDEF void plt_text_draw(plt_image *im, const char *text, int x, int y, int color);
 PTDEF void plt_text_draw_scaled(plt_image *im, const char *text, int x, int y, int color, int scale);
@@ -125,6 +128,12 @@ PTDEF int  plt_text_measure(const char *text, int scale);
 #define plt__g_f32(px)     (plt__g_i32(px) / 255.0f)
 #define plt__b_f32(px)     (plt__b_i32(px) / 255.0f)
 
+#define plt__panic(msg) do {                             \
+    printf("error:%s:%s: %sn", __FILE__, __LINE__, msg); \
+    exit(1);                                             \
+} while(0);
+
+
 PTDEF plt_image *plt_init(int width, int height) {
   plt_image *plt = (plt_image*) PLT_MALLOC(sizeof(*plt));
   plt->pixels   = (int*) PLT_MALLOC(sizeof(int) * width * height);
@@ -152,6 +161,16 @@ PTDEF void plt_free(plt_image *im) {
   PLT_FREE(im);
 }
 
+PTDEF void plt_pixel_map(plt_image *im, int (*map_fn)(plt_image*im, int row, int col, int px)) {
+  for (int row=0; row<im->height; ++row) {
+    for (int col=0; col<im->width; ++col) {
+      int px = im->pixels[row*im->width + col];
+      int res = map_fn(im, row, col, px);
+      im->pixels[row*im->width + col] = res;
+    }
+  }
+}
+
 PTDEF void plt_pixel_put(plt_image *im, int x, int y, int color, float alpha) {
   /* This will put pixel on buffer with alpha blending strategy. */
   int r    = plt__r_i32(color);
@@ -173,7 +192,7 @@ PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt) {
   if (im->color_format == target_fmt) return;
 
   // NTSC formula: https://en.wikipedia.org/wiki/Grayscale
-  if (target_fmt == PLT_COLOR_GRAY)
+  if (target_fmt == PLT_COLOR_GRAY) {
     for (int i = 0; i < im->width * im->height; ++i) {
       float r = plt__r_f32(im->pixels[i]);
       float g = plt__g_f32(im->pixels[i]);
@@ -182,6 +201,42 @@ PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt) {
       gr = fmin(1, fmax(gr, 0));
       im->pixels[i] = plt__rgb((int)(gr*255), (int)(gr*255), (int)(gr*255));
     } 
+    im->color_format = PLT_COLOR_GRAY;
+  }
+}
+
+PTDEF int plt__cmp(const void *a, const void *b) {
+  return (*(int*)a - *(int*)b);
+}
+
+PTDEF int plt__median(plt_image *im, int *pixel, int win_w, int win_h) {
+  if (im->color_format != PLT_COLOR_GRAY) {
+    plt__panic("Color must be PLT_COLOR_GRAY");
+  }
+
+  int px_count = win_w * win_h;
+  int r_values[px_count];
+  int g_values[px_count];
+  int b_values[px_count];
+  for (int i=0; i<px_count; ++i) {
+    r_values[i] = plt__r_i32(pixel[i]);
+    g_values[i] = plt__g_i32(pixel[i]);
+    b_values[i] = plt__b_i32(pixel[i]);
+  }
+  // Sort the arrays
+  qsort(r_values, px_count, sizeof(int), plt__cmp);
+  qsort(g_values, px_count, sizeof(int), plt__cmp);
+  qsort(b_values, px_count, sizeof(int), plt__cmp);
+
+  // Get the median values
+  int med_r = r_values[px_count / 2];
+  int med_g = g_values[px_count / 2];
+  int med_b = b_values[px_count / 2];
+  return plt__rgb(med_r, med_g, med_b);
+}
+
+PTDEF void plt_filter_median(plt_image *im, int f_w, int f_h) {
+  return plt_window_apply_fn(im, f_w, f_h, plt__median);
 }
 
 PTDEF void plt_filter_apply(plt_image *im, int f_w, int f_h, float *f_data) {
@@ -208,6 +263,27 @@ PTDEF void plt_filter_apply(plt_image *im, int f_w, int f_h, float *f_data) {
         (int)(mt__clampf(g_sum)*255),
         (int)(mt__clampf(b_sum)*255)
       );
+    }
+  }
+}
+
+PTDEF void plt_window_apply_fn(plt_image *im, int win_w, int win_h, int (*map_fn)(plt_image*, int*, int, int)) {
+  for (int row=0; row<im->height; ++row) {
+    for (int col=0; col<im->width; ++col) {
+      int im_window[win_w*win_h];
+      for (int f_row = 0; f_row < win_h; ++f_row) {
+        int px_row = row + f_row - win_h/2;
+        for (int f_col = 0; f_col < win_w; ++f_col) {
+          int px_col = col + f_col - win_w/2;
+          if (px_row < 0 || px_row >= im->height || px_col < 0 || px_col >= im->width) {
+            im_window[f_row*win_w + f_col] = -1;
+          } else {
+            int px = im->pixels[px_row*im->width + px_col];
+            im_window[f_row*win_w + f_col] = px;
+          }
+        }
+      }
+      im->pixels[row*im->width+col] = map_fn(im, im_window, win_w, win_h);
     }
   }
 }
