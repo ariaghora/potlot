@@ -100,6 +100,10 @@ PTDEF void plt_window_apply_fn(plt_image *im, int win_w, int win_h, int (*map_fn
 PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int thickness);
 PTDEF void plt_pixel_map(plt_image *im, int (*map_fn)(plt_image*im, int row, int col, int px));
 PTDEF void plt_pixel_put(plt_image *im, int x, int y, int color, float alpha);
+PTDEF void plt_circle_draw(plt_image *im, int x0, int y0, int r, int color, int width);
+PTDEF void plt_circle_fill(plt_image *im, int x0, int y0, int r, int color, float alpha);
+PTDEF void plt_rect_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int width);
+PTDEF void plt_rect_fill(plt_image *im, int x0, int y0, int x1, int y1, int color, float alpha);
 PTDEF void plt_text_draw(plt_image *im, const char *text, int x, int y, int color);
 PTDEF void plt_text_draw_scaled(plt_image *im, const char *text, int x, int y, int color, int scale);
 PTDEF int  plt_text_measure(const char *text, int scale);
@@ -129,7 +133,7 @@ PTDEF int  plt_text_measure(const char *text, int scale);
 #define plt__b_f32(px)     (plt__b_i32(px) / 255.0f)
 
 #define plt__panic(msg) do {                             \
-    printf("error:%s:%s: %sn", __FILE__, __LINE__, msg); \
+    printf("error:%s:%d: %sn", __FILE__, __LINE__, msg); \
     exit(1);                                             \
 } while(0);
 
@@ -370,6 +374,71 @@ PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int colo
       plt_pixel_put(im, x, y + width, color, fpart);
 
       intery = intery + grad;
+    }
+  }
+}
+
+PTDEF void plt_circle_draw(plt_image *im, int x0, int y0, int r, int color, int width) {
+    for (int y = -r - width / 2; y <= r + width / 2; y++) {
+        for (int x = -r - width / 2; x <= r + width / 2; x++) {
+            float dist = sqrtf(x*x + y*y);
+            if (dist >= r - width / 2.f && dist <= r + width / 2.f) {
+                float alpha = 1.f;
+                if (dist > r + width / 2.f - 1)
+                    alpha = r + width / 2.f - dist;
+                else if (dist < r - width / 2.f + 1)
+                    alpha = dist - (r - width / 2.f);
+                
+                if (alpha > 0) {
+                    int px = x0 + x;
+                    int py = y0 + y;
+                    if (px >= 0 && px < im->width && py >= 0 && py < im->height) {
+                        plt_pixel_put(im, px, py, color, alpha);
+                    }
+                }
+            }
+        }
+    }
+}
+
+PTDEF void plt_circle_fill(plt_image *im, int x0, int y0, int r, int color, float alpha) {
+    float r_outer = r + 0.5f;
+    float r_inner = r - 0.5f;
+
+    for (int y = -r - 1; y <= r + 1; y++) {
+        for (int x = -r - 1; x <= r + 1; x++) {
+            float dist = sqrtf(x*x + y*y);
+            
+            if (dist <= r_outer) {
+                float pixel_alpha = alpha;
+                
+                if (dist > r_inner) {
+                    pixel_alpha *= (r_outer - dist);
+                }
+                
+                int px = x0 + x;
+                int py = y0 + y;
+                if (px >= 0 && px < im->width && py >= 0 && py < im->height) {
+                    plt_pixel_put(im, px, py, color, pixel_alpha);
+                }
+            }
+        }
+    }
+}
+
+PTDEF void plt_rect_draw(plt_image *im, int x0, int y0, int x1, int y1, int color, int width) {
+  plt_line_draw(im, x0, y0, x1, y0, color, width); // top line
+  plt_line_draw(im, x0, y1, x1, y1, color, width); // bottom line
+  plt_line_draw(im, x0, y0, x0, y1, color, width); // left line
+  plt_line_draw(im, x1, y0, x1, y1, color, width); // left line
+}
+
+PTDEF void plt_rect_fill(plt_image *im, int x0, int y0, int x1, int y1, int color, float alpha) {
+  x0 = x0 > x1 ? x1 : x0;
+  y0 = y0 > y1 ? y1 : y0;
+  for (int row=y0; row<=y1; ++row) {
+    for (int col=x0; col<=x1; ++col) {
+      plt_pixel_put(im, col, row, color, alpha);
     }
   }
 }
