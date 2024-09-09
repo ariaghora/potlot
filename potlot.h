@@ -154,9 +154,9 @@ PTDEF plt_image  *plt_from_stbi_uc_rgb(unsigned char *data, int width, int heigh
   plt->width    = width; plt->height=height;
   plt->color_format = PLT_COLOR_RGB;
   // convert stb_image data into packed rgb
-  for (int i=0; i < px_count; ++i) 
+  for (int i=0; i < px_count; ++i)
     plt->pixels[i] = plt__rgb(data[i*3], data[i*3+1], data[i*3+2]);
-  
+
   return plt;
 }
 
@@ -204,7 +204,7 @@ PTDEF void plt_color_convert(plt_image *im, plt_color_format target_fmt) {
       float gr = (0.299*r + 0.587*g + 0.114*b);
       gr = fmin(1, fmax(gr, 0));
       im->pixels[i] = plt__rgb((int)(gr*255), (int)(gr*255), (int)(gr*255));
-    } 
+    }
     im->color_format = PLT_COLOR_GRAY;
   }
 }
@@ -317,12 +317,12 @@ PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int colo
 
   if (steep) {
     plt_pixel_put(im, ypxl1, xpxl1, color, rfpart*xgap);
-    for (int i = 1; i < width; ++i) 
+    for (int i = 1; i < width; ++i)
       plt_pixel_put(im, ypxl1 + i, xpxl1, color, 1);
     plt_pixel_put(im, ypxl1 + width, xpxl1, color, fpart*xgap);
   } else {
     plt_pixel_put(im, xpxl1, ypxl1, color, rfpart*xgap);
-    for (int i = 1; i < width; ++i) 
+    for (int i = 1; i < width; ++i)
       plt_pixel_put(im, xpxl1, ypxl1 + i, color, 1);
     plt_pixel_put(im, xpxl1, ypxl1 + width, color, fpart*xgap);
   }
@@ -339,12 +339,12 @@ PTDEF void plt_line_draw(plt_image *im, int x0, int y0, int x1, int y1, int colo
 
   if (steep) {
     plt_pixel_put(im, ypxl2, xpxl2, color, rfpart*xgap);
-    for (int i = 1; i < width; ++i) 
+    for (int i = 1; i < width; ++i)
       plt_pixel_put(im, ypxl2 + i, xpxl2, color, 1);
     plt_pixel_put(im, ypxl2 + width, xpxl2, color, fpart*xgap);
   } else {
     plt_pixel_put(im, xpxl2, ypxl2, color, rfpart*xgap);
-    for (int i = 1; i < width; ++i) 
+    for (int i = 1; i < width; ++i)
       plt_pixel_put(im, xpxl2, ypxl2 + i, color, 1);
     plt_pixel_put(im, xpxl2, ypxl2 + width, color, fpart*xgap);
   }
@@ -388,7 +388,7 @@ PTDEF void plt_circle_draw(plt_image *im, int x0, int y0, int r, int color, int 
                     alpha = r + width / 2.f - dist;
                 else if (dist < r - width / 2.f + 1)
                     alpha = dist - (r - width / 2.f);
-                
+
                 if (alpha > 0) {
                     int px = x0 + x;
                     int py = y0 + y;
@@ -408,14 +408,14 @@ PTDEF void plt_circle_fill(plt_image *im, int x0, int y0, int r, int color, floa
     for (int y = -r - 1; y <= r + 1; y++) {
         for (int x = -r - 1; x <= r + 1; x++) {
             float dist = sqrtf(x*x + y*y);
-            
+
             if (dist <= r_outer) {
                 float pixel_alpha = alpha;
-                
+
                 if (dist > r_inner) {
                     pixel_alpha *= (r_outer - dist);
                 }
-                
+
                 int px = x0 + x;
                 int py = y0 + y;
                 if (px >= 0 && px < im->width && py >= 0 && py < im->height) {
